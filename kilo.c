@@ -9,6 +9,13 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define AUBF_INIT {NULL, 0}
 // ------------data----------
+
+enum editorKey {
+  ARROW_LEFT = 1000,
+  ARROW_RIGHT ,
+  ARROW_UP,
+  ARROW_DOWN
+};
 struct editorConfig{
   int cx, cy;
   int screenRows;
@@ -81,41 +88,58 @@ void abAppend(struct aubf *ab, const char *s, int len){
 void abFree(struct aubf *ab){
   free(ab->b);
 }
-char editorReadKey(){
+int editorReadKey(){
   int nread;
   char c;
   while((nread = read(STDIN_FILENO, &c, 1))!=1){
     if(nread == -1 && errno != EAGAIN) die("read");
   }
+  if(c == '\x1b'){
+    char seq[3];
+
+    if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+    if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+    if (seq[0] == '[') {
+      switch (seq[1]) {
+        case 'A': return ARROW_UP;
+        case 'B': return ARROW_DOWN;
+        case 'C': return ARROW_RIGHT;
+        case 'D': return ARROW_LEFT;
+      }
+    }
+    return '\x1b';
+  }
+  else{
   return c;
+  }
 }
 
-void editorMoveCursor(char c){
+void editorMoveCursor(int c){
   switch(c){
-    case 'w': E.cy--;
+    case ARROW_UP: E.cy--;
     break;
-    case 'a': E.cx--;
+    case ARROW_LEFT: E.cx--;
 
     break;
-    case 's': E.cy++;
+    case ARROW_DOWN: E.cy++;
     break;
-    case 'd': E.cx++;
+    case ARROW_RIGHT: E.cx++;
     break;
   }
 }
 
 void editorProcessKeyPress(){
-  char c= editorReadKey();
+  int c= editorReadKey();
   switch (c) {
     case CTRL_KEY('q'):
   write(STDIN_FILENO, "\x1b[2J", 4);
   write(STDIN_FILENO, "\x1b[H", 3);
       exit(0);
       break;
-    case 'w':
-    case'a':
-    case 's':
-    case 'd':
+    case ARROW_UP:
+    case ARROW_DOWN:
+    case ARROW_LEFT:
+    case ARROW_RIGHT:
     editorMoveCursor(c);
     break;
   }
@@ -177,7 +201,7 @@ int main(){
       //control charecterare non printable
       //the above function is from ctype.h is a function to check if the charecter is a control charecter
   
-    while (1) {
+     while (1) {
     editorRefreshScreen();
      editorProcessKeyPress();
   }
