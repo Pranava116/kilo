@@ -1,5 +1,8 @@
 #include<unistd.h>
+#define _GNU_SOURCE
+#define  _POSIX_C_SOURCE 200809L
 #include<termios.h>
+#include<sys/types.h>
 #include<stdlib.h>
 #include<errno.h>
 #include<string.h>
@@ -22,13 +25,14 @@ enum editorKey {
   PAGE_UP,
   PAGE_DOWN,
   HOME_KEY,
-  END_KEY
+  END_KEY,
+  DEL_KEY
 };
 struct editorConfig{
   int cx, cy;
   int screenRows;
   int screenCols;
-  int numows;
+  int numrows;
   erow row;
   struct termios orig_termios;
 };
@@ -79,6 +83,26 @@ int getWindowSize(int *rows, int *cols){
     return 0;
   }
 }
+void editorOpen(char *filename){
+	FILE *fp = fopen(filename, "r");
+	if(!fp) die("fileopen");
+	char *line = NULL;
+	ssize_t linecap = 0;
+	ssize_t linelen;
+	linelen = getdelim(&line, &linecap, fp);
+	if(linelen != -1){
+		while(linelen>0 && (line[linelen-1] == '\n' || line[linelen -1] == '\r'))
+		       linelen--; 	
+	
+	E.row.size = linelen;
+	E.row.chars = malloc(linelen+1);
+	memcpy(E.row.chars, line, linelen);
+	E.row.chars[linelen] = '\0';
+	E.numrows = 1;
+	}
+	free(line);
+	free(fp);	
+}
 //-------------input-----------------
 struct aubf{ // stands for appending the buffer
   char *b;
@@ -114,6 +138,7 @@ int editorReadKey(){
         if (seq[2] == '~') {
           switch (seq[1]) {
 		case '1': return HOME_KEY;
+		case '3': return DEL_KEY;
 		case '4': return END_KEY;
 		case '8': return END_KEY;
 		case '7': return HOME_KEY;
@@ -207,6 +232,7 @@ printf("KEy : %d\r\n" ,c);
 void editorDrawRows(struct aubf *ab){
   int y;
   for (y = 0; y < E.screenRows; y++) {
+	  if(y >= E.numrows){
     if (y == E.screenRows / 3) {
       char welcome[80];
       int welcomelen = snprintf(welcome, sizeof(welcome),
@@ -222,6 +248,12 @@ void editorDrawRows(struct aubf *ab){
     } else {
       abAppend(ab, "~", 1);
     }
+	  }
+	  else{
+		  int len = E.row.size;
+		  if(len>E.screenCols) len = E.screenCols;
+		  abAppend(ab, E.row.chars, len);
+	  }
     abAppend(ab, "\x1b[K", 3);
     if (y < E.screenRows - 1) {
       abAppend(ab, "\r\n", 2);
@@ -247,12 +279,16 @@ abAppend(&ab, "\x1b[?25l", 6); // clear the cursor
 void initEditor(){
   E.cx = 0;
   E.cy = 0;
+  E.numrows = 0;
   if(getWindowSize(&E.screenRows, &E.screenCols) == -1) die("getWindowSize0");
 }
 
-int main(){
+int main(int argc, char *argv[]){
   enable_raw_mode();
   initEditor();
+  if(argc >= 2){
+  	editorOpen(argv[1]);
+  }
   //read input from the terminal
       //control charecterare non printable
       //the above function is from ctype.h is a function to check if the charecter is a control charecter
