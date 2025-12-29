@@ -1,6 +1,9 @@
-#include<unistd.h>
+
+#define _BSD_SOURCE
+#define _DEFAULT_SOURCE
 #define _GNU_SOURCE
 #define  _POSIX_C_SOURCE 200809L
+#include<unistd.h>
 #include<termios.h>
 #include<sys/types.h>
 #include<stdlib.h>
@@ -33,7 +36,7 @@ struct editorConfig{
   int screenRows;
   int screenCols;
   int numrows;
-  erow row;
+  erow *row;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -83,22 +86,26 @@ int getWindowSize(int *rows, int *cols){
     return 0;
   }
 }
+void editorAppendRow(char *s, size_t len){
+	  E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+  int at = E.numrows;
+  E.row[at].size = len;
+  E.row[at].chars = malloc(len + 1);
+  memcpy(E.row[at].chars, s, len);
+  E.row[at].chars[len] = '\0';
+  E.numrows++;
+}
 void editorOpen(char *filename){
 	FILE *fp = fopen(filename, "r");
 	if(!fp) die("fileopen");
 	char *line = NULL;
 	ssize_t linecap = 0;
 	ssize_t linelen;
-	linelen = getdelim(&line, &linecap, fp);
-	if(linelen != -1){
+		while( (linelen = getline(&line, &linecap, fp))!= -1){
 		while(linelen>0 && (line[linelen-1] == '\n' || line[linelen -1] == '\r'))
 		       linelen--; 	
 	
-	E.row.size = linelen;
-	E.row.chars = malloc(linelen+1);
-	memcpy(E.row.chars, line, linelen);
-	E.row.chars[linelen] = '\0';
-	E.numrows = 1;
+		       editorAppendRow(line, linelen);
 	}
 	free(line);
 	free(fp);	
@@ -234,6 +241,7 @@ void editorDrawRows(struct aubf *ab){
   for (y = 0; y < E.screenRows; y++) {
 	  if(y >= E.numrows){
     if (y == E.screenRows / 3) {
+	    if(E.numrows == 0&& E.screenRows/3){
       char welcome[80];
       int welcomelen = snprintf(welcome, sizeof(welcome),
         "Kilo editor -- version v1");
@@ -248,11 +256,12 @@ void editorDrawRows(struct aubf *ab){
     } else {
       abAppend(ab, "~", 1);
     }
+    }
 	  }
 	  else{
-		  int len = E.row.size;
+		  int len = E.row[y].size;
 		  if(len>E.screenCols) len = E.screenCols;
-		  abAppend(ab, E.row.chars, len);
+		  abAppend(ab, E.row[y].chars, len);
 	  }
     abAppend(ab, "\x1b[K", 3);
     if (y < E.screenRows - 1) {
@@ -280,12 +289,14 @@ void initEditor(){
   E.cx = 0;
   E.cy = 0;
   E.numrows = 0;
+  E.row = NULL;
   if(getWindowSize(&E.screenRows, &E.screenCols) == -1) die("getWindowSize0");
 }
 
 int main(int argc, char *argv[]){
   enable_raw_mode();
   initEditor();
+
   if(argc >= 2){
   	editorOpen(argv[1]);
   }
